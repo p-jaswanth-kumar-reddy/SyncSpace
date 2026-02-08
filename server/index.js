@@ -37,21 +37,18 @@ mongoose
 
 // Socket events
 io.on("connection", (socket) => {
-  console.log("User connected:", socket.id);
 
   // Join room
   socket.on("joinRoom", (roomId) => {
     socket.join(roomId);
-    console.log("User joined room:", roomId);
   });
 
   // Send message
   socket.on("sendMessage", (data) => {
-    io.to(data.roomId).emit("receiveMessage", data);
+    socket.to(data.roomId).emit("receiveMessage", data);
   });
 
   socket.on("disconnect", () => {
-    console.log("User disconnected:", socket.id);
   });
 });
 
