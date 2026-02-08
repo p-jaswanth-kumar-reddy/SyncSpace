@@ -2,6 +2,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const authRoutes = require("./routes/authRoutes");
 const protectedRoutes = require("./routes/protectedRoutes");
+const roomRoutes = require("./routes/roomRoutes");
 const cors = require("cors");
 require("dotenv").config();
 
@@ -11,6 +12,7 @@ app.use(cors());
 app.use(express.json());
 app.use("/api/auth", authRoutes);
 app.use("/api", protectedRoutes);
+app.use("/api", roomRoutes);
 
 app.get("/health", (req, res) => {
   res.send("Server is running");
