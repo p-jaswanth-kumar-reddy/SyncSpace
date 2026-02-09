@@ -13,13 +13,16 @@ function Register() {
   };
 
   const handleSubmit = async () => {
-    try {
-      await axios.post("http://localhost:5000/api/auth/register", form);
-      alert("Registration successful");
-    } catch (err) {
-      alert("Registration failed");
-    }
-  };
+  try {
+    await axios.post("http://localhost:5000/api/auth/register", form);
+    alert("Registration successful");
+
+    // Redirect to login page
+    window.location.href = "/";
+  } catch (err) {
+    alert("Registration failed");
+  }
+};
 
   return (
     <div style={{ padding: 20 }}>
