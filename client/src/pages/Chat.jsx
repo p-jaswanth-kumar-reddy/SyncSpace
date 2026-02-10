@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { io } from "socket.io-client";
+import { jwtDecode } from "jwt-decode";
 
 const socket = io("http://localhost:5000");
 
@@ -7,12 +8,17 @@ function App() {
   const [room, setRoom] = useState("");
   const [joinedRoom, setJoinedRoom] = useState("");
   const [message, setMessage] = useState("");
+  const [username, setUsername] = useState("");
   const [messages, setMessages] = useState([]);
 
   useEffect(() => {
-    socket.on("connect", () => {
-      console.log("Connected:", socket.id);
-    });
+    const token = localStorage.getItem("token");
+    if (!token) {
+      window.location.href = "/";
+    } else {
+      const decoded = jwtDecode(token); 
+      setUsername(decoded.name);
+    }
 
     socket.on("receiveMessage", (data) => {
       setMessages((prev) => [...prev, data]);
@@ -35,6 +41,7 @@ function App() {
       const messageData = {
         roomId: joinedRoom,
         message,
+        sender: username,
       };
 
       socket.emit("sendMessage", messageData);
@@ -71,7 +78,9 @@ function App() {
             }}
           >
             {messages.map((msg, index) => (
-              <div key={index}>{msg.message}</div>
+              <div key={index}>
+                <strong>{msg.sender}:</strong> {msg.message}
+              </div>
             ))}
           </div>
 
