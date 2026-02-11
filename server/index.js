@@ -4,6 +4,7 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const http = require("http");
 const { Server } = require("socket.io");
+const Message = require("./models/Message");
 
 dotenv.config();
 
@@ -39,16 +40,35 @@ mongoose
 io.on("connection", (socket) => {
 
   // Join room
-  socket.on("joinRoom", (roomId) => {
+  socket.on("joinRoom", async (roomId) => {
     socket.join(roomId);
+
+    // Load old messages
+    const oldMessages = await Message.find({ roomId }).sort({ createdAt: 1 });
+
+    socket.emit("loadMessages", oldMessages);
   });
 
   // Send message
-  socket.on("sendMessage", (data) => {
+  socket.on("sendMessage", async (data) => {
+    // Save message to DB
+    const newMessage = new Message({
+      roomId: data.roomId,
+      sender: data.sender,
+      message: data.message,
+    });
+
+    await newMessage.save();
+
+    // Send to other users
     socket.to(data.roomId).emit("receiveMessage", data);
   });
 
   socket.on("disconnect", () => {
+  });
+
+  socket.on("leaveRoom", (roomId) => {
+    socket.leave(roomId);
   });
 });
 
