@@ -21,6 +21,12 @@ function App() {
       setUsername(decoded.name);
     }
 
+    // ✅ ADD THIS BLOCK
+    fetch("http://localhost:5000/api/rooms")
+      .then((res) => res.json())
+      .then((data) => setRooms(data))
+      .catch((err) => console.error("Error fetching rooms:", err));
+
     socket.on("loadMessages", (data) => {
       setMessages(data);
     });
@@ -80,12 +86,22 @@ function App() {
         />
 
         <button
-          onClick={() => {
-            if (room && !rooms.includes(room)) {
-              setRooms([...rooms, room]);
-              socket.emit("joinRoom", room);
-              setJoinedRoom(room);
+          onClick={async () => {
+            if (!room) return;
+
+            const res = await fetch("http://localhost:5000/api/rooms", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ name: room }),
+            });
+
+            const data = await res.json();
+
+            if (res.ok && data._id) {
+              setRooms((prev) => [...prev, data]);
               setRoom("");
+            } else {
+              alert(data.message || "Error creating room");
             }
           }}
         >
@@ -93,20 +109,26 @@ function App() {
         </button>
         {rooms.map((r) => (
           <div
-            key={r}
+            key={r._id}
             onClick={() => {
-              socket.emit("joinRoom", r);
-              setJoinedRoom(r);
-              setMessages([]); // reset messages when switching rooms
+              socket.emit("joinRoom", r.name);
+              setJoinedRoom(r.name);
+              setMessages([]);
             }}
             style={{
               padding: "10px",
               margin: "5px 0",
               cursor: "pointer",
-              background: joinedRoom === r ? "#444" : "transparent",
+              background: joinedRoom === r.name ? "#444" : "transparent",
             }}
           >
-            {r}
+            <div>{r.name}</div>
+
+            {r.createdAt && (
+              <small style={{ fontSize: "11px", color: "#aaa" }}>
+                Created: {new Date(r.createdAt).toLocaleString()}
+              </small>
+            )}
           </div>
         ))}
 
@@ -157,7 +179,7 @@ function App() {
         >
           {messages.map((msg, index) => (
             <div
-              key={index}
+              key={msg._id || index}
               style={{
                 marginBottom: "10px",
                 padding: "10px",
