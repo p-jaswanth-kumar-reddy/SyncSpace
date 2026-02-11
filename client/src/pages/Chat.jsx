@@ -11,7 +11,7 @@ function App() {
   const [username, setUsername] = useState("");
   const [messages, setMessages] = useState([]);
 
-  const [rooms, setRooms] = useState(["general", "tech", "random"]);
+  const [rooms, setRooms] = useState([]);
   useEffect(() => {
     const token = localStorage.getItem("token");
     if (!token) {
@@ -68,6 +68,9 @@ function App() {
         }}
       >
         <h3>Rooms</h3>
+        {rooms.length === 0 && (
+          <p style={{ fontSize: "14px" }}>No rooms yet. Create one!</p>
+        )}
         <input
           type="text"
           placeholder="New room name"
@@ -80,6 +83,8 @@ function App() {
           onClick={() => {
             if (room && !rooms.includes(room)) {
               setRooms([...rooms, room]);
+              socket.emit("joinRoom", room);
+              setJoinedRoom(room);
               setRoom("");
             }
           }}
