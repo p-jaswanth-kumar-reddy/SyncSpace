@@ -85,38 +85,65 @@ router.post("/login", async (req, res) => {
 
 /* ================= FORGOT PASSWORD ================= */
 router.post("/forgot-password", async (req, res) => {
+  try {
     const { email } = req.body;
 
     const user = await User.findOne({ email });
     if (!user)
-        return res.status(400).json({ message: "User not found" });
+      return res.status(400).json({ message: "User not found" });
 
     const resetCode = Math.floor(
-        100000 + Math.random() * 900000
+      100000 + Math.random() * 900000
     ).toString();
 
     user.resetPasswordCode = resetCode;
+    user.resetPasswordExpires = Date.now() + 10 * 60 * 1000; // 10 minutes
+
     await user.save();
 
-    console.log("Reset Code:", resetCode);
+    // Send email here (recommended)
+    await sendEmail(
+      email,
+      "SyncSpace Password Reset",
+      `Your reset code is: ${resetCode}`
+    );
 
     res.json({ message: "Reset code sent to email" });
+
+  } catch (err) {
+    res.status(500).json({ message: "Forgot password failed" });
+  }
 });
 
 /* ================= RESET PASSWORD ================= */
 router.post("/reset-password", async (req, res) => {
+  try {
     const { email, code, newPassword } = req.body;
 
     const user = await User.findOne({ email });
-    if (!user || user.resetPasswordCode !== code)
-        return res.status(400).json({ message: "Invalid reset code" });
+
+    if (
+      !user ||
+      user.resetPasswordCode !== code ||
+      user.resetPasswordExpires < Date.now()
+    ) {
+      return res
+        .status(400)
+        .json({ message: "Invalid or expired reset code" });
+    }
 
     user.password = await bcrypt.hash(newPassword, 10);
+
     user.resetPasswordCode = null;
+    user.resetPasswordExpires = null;
 
     await user.save();
 
     res.json({ message: "Password reset successful" });
+
+  } catch (err) {
+    res.status(500).json({ message: "Reset password failed" });
+  }
 });
 
 module.exports = router;

@@ -64,6 +64,12 @@ export default function Login() {
                     Login
                 </button>
 
+                <p className="text-sm text-center mt-3">
+                    <a href="/forgot-password" className="text-blue-600">
+                        Forgot Password?
+                    </a>
+                </p>
+
                 <p style={{ marginTop: "10px", fontSize: "14px" }}>
                     Don't have an account?{" "}
                     <span

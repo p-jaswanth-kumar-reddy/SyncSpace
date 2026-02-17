@@ -8,7 +8,9 @@ const userSchema = new mongoose.Schema(
 
     isVerified: { type: Boolean, default: false },
     verificationCode: String,
+
     resetPasswordCode: String,
+    resetPasswordExpires: Date,
   },
   { timestamps: true }
 );
