@@ -1,33 +1,32 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 export default function Login() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
 
+    const navigate = useNavigate(); // ✅ ADD THIS
+
     const handleLogin = async (e) => {
         e.preventDefault();
 
-        try {
-            const res = await fetch("http://localhost:5000/api/auth/login", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({ email, password }),
-            });
+        const res = await fetch("http://localhost:5000/api/auth/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+        });
 
-            const data = await res.json();
+        const data = await res.json();
 
-            if (res.ok) {
-                localStorage.setItem("token", data.token);
-                alert("Login successful");
-                window.location.href = "/dashboard";
+        if (res.ok) {
+            localStorage.setItem("token", data.token);
+            navigate("/dashboard");
+        } else {
+            if (data.message === "Verify your email first") {
+                navigate("/verify", { state: { email } });
             } else {
-                alert(data.message || "Login failed");
+                alert(data.message);
             }
-        } catch (err) {
-            console.error(err);
-            alert("Server error");
         }
     };
 

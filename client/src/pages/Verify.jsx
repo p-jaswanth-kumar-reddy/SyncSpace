@@ -23,6 +23,26 @@ function Verify() {
       alert(data.message);
     }
   };
+  const handleResend = async () => {
+    if (!email) {
+      alert("Enter your email first.");
+      return;
+    }
+
+    const res = await fetch("http://localhost:5000/api/auth/resend-verification", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      alert("New verification code sent!");
+    } else {
+      alert(data.message);
+    }
+  };
 
   return (
     <div className="flex justify-center items-center h-screen">
@@ -38,6 +58,13 @@ function Verify() {
 
         <button className="bg-green-600 text-white p-2 w-full">
           Verify
+        </button>
+        <button
+          type="button"
+          onClick={handleResend}
+          className="w-full mt-3 bg-gray-600 text-white p-2 rounded hover:bg-gray-700"
+        >
+          Resend Code
         </button>
       </form>
     </div>

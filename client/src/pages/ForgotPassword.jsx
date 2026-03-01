@@ -38,6 +38,22 @@ function ForgotPassword() {
     if (res.ok) window.location.href = "/";
   };
 
+  const handleResend = async () => {
+    const res = await fetch("http://localhost:5000/api/auth/resend-reset-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+
+    const data = await res.json();
+
+    if (res.ok) {
+      alert("New reset code sent!");
+    } else {
+      alert(data.message);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100 from-indigo-600 to-purple-700">
       <div className="bg-white p-8 rounded-xl shadow-xl w-96">
@@ -95,6 +111,14 @@ function ForgotPassword() {
               className="w-full bg-green-600 text-white py-2 rounded-lg hover:bg-green-700 transition"
             >
               Reset Password
+            </button>
+
+            <button
+              type="button"
+              onClick={handleResend}
+              className="mt-3 w-full bg-gray-600 text-white p-2 rounded"
+            >
+              Resend Code
             </button>
           </>
         )}
