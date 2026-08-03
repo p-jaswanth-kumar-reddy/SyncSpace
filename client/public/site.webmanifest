@@ -1,0 +1,14 @@
+{
+  "name": "SyncSpace",
+  "short_name": "SyncSpace",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#2563EB",
+  "background_color": "#ffffff",
+  "display": "standalone"
+}

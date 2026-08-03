@@ -1,3 +1,25 @@
-node_modules
+# Dependencies
+node_modules/
+
+# Environment variables
 .env
-dist
+
+# Build files
+dist/
+build/
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
+
+# User uploaded files
+server/uploads/*
+!server/uploads/.gitkeep

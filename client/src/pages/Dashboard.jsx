@@ -1,229 +1,317 @@
-import { useEffect, useState } from "react";
-import { io } from "socket.io-client";
+import React, { useEffect, useState } from "react";
+import Sidebar from "../components/Sidebar";
+import ChatArea from "../components/ChatArea";
+import MembersSidebar from "../components/MembersSidebar";
+import CreateRoomModal from "../components/CreateRoomModal";
+import RoomSettingsModal from "../components/RoomSettingsModal";
+import UserProfileModal from "../components/UserProfileModal";
+import Toast from "../components/Toast";
+import { useAuth } from "../context/AuthContext";
+import { useSocket } from "../context/SocketContext";
+import api from "../api/axios";
 
-const socket = io("http://localhost:5000");
-
-function Dashboard() {
+export default function Dashboard() {
   const [rooms, setRooms] = useState([]);
   const [joinedRooms, setJoinedRooms] = useState([]);
-  const [activeRoom, setActiveRoom] = useState(null);
+  const [activeRoomId, setActiveRoomId] = useState(null);
+  const [messagesMap, setMessagesMap] = useState({});
+  const [roomMembersMap, setRoomMembersMap] = useState({});
+  const [typingUsersMap, setTypingUsersMap] = useState({});
+  const [unreadCountsMap, setUnreadCountsMap] = useState({});
 
-  const [search, setSearch] = useState("");
-  const [roomName, setRoomName] = useState("");
-  const [roomType, setRoomType] = useState("public");
-  const [roomPassword, setRoomPassword] = useState("");
+  // Modals state
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [selectedUserForProfile, setSelectedUserForProfile] = useState(null);
 
-  // ================= FETCH ROOMS =================
+  // Toast state
+  const [toast, setToast] = useState({ message: "", type: "info" });
+
+  const { user, token } = useAuth();
+  const { socket, onlineUsers, isConnected } = useSocket();
+
+  // Fetch all available rooms & joined rooms on mount
   useEffect(() => {
-    fetch("http://localhost:5000/api/rooms")
-      .then((res) => res.json())
-      .then((data) => setRooms(data))
-      .catch((err) => console.error(err));
-  }, []);
+    const loadData = async () => {
+      try {
+        const [roomsRes, joinedRes] = await Promise.all([
+          api.get("/rooms"),
+          token ? api.get("/rooms/joined") : Promise.resolve({ data: [] }),
+        ]);
 
-  // ================= CREATE ROOM =================
-  const createRoom = async () => {
-    if (!roomName.trim()) return;
+        if (Array.isArray(roomsRes.data)) setRooms(roomsRes.data);
+        if (Array.isArray(joinedRes.data)) setJoinedRooms(joinedRes.data);
+      } catch (err) {
+        console.error("Failed to load rooms:", err);
+      }
+    };
 
-    const res = await fetch("http://localhost:5000/api/rooms", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: roomName,
-        type: roomType,
-        password: roomType === "private" ? roomPassword : undefined,
-      }),
+    loadData();
+  }, [token]);
+
+  // Automatically join sockets for persisted rooms
+  // Re-runs when socket reconnects (isConnected changes) to re-join all rooms
+  useEffect(() => {
+    if (!socket || !user || !isConnected) return;
+    joinedRooms.forEach((room) => {
+      socket.emit("joinRoom", { roomId: room._id });
     });
 
-    const data = await res.json();
-
-    if (res.ok) {
-      setRooms((prev) => [data, ...prev]);
-      setRoomName("");
-      setRoomPassword("");
-    } else {
-      alert(data.message);
+    if (joinedRooms.length > 0 && !activeRoomId) {
+      setActiveRoomId(joinedRooms[0]._id);
     }
-  };
+  }, [socket, joinedRooms, user, isConnected, activeRoomId]);
 
-  // ================= JOIN ROOM =================
-  const joinRoom = async (room) => {
-    if (room.type === "private") {
-      const password = prompt("Enter room password:");
-      if (!password) return;
+  // Load messages & members when active room changes
+  useEffect(() => {
+    if (!activeRoomId) return;
 
-      const res = await fetch("http://localhost:5000/api/rooms/join", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomId: room._id, password }),
+    const loadRoomData = async () => {
+      try {
+        const [messagesRes, membersRes] = await Promise.all([
+          api.get(`/messages/${activeRoomId}`),
+          api.get(`/rooms/${activeRoomId}/members`),
+        ]);
+
+        if (Array.isArray(messagesRes.data)) {
+          setMessagesMap((prev) => ({ ...prev, [activeRoomId]: messagesRes.data }));
+        }
+        if (Array.isArray(membersRes.data)) {
+          setRoomMembersMap((prev) => ({ ...prev, [activeRoomId]: membersRes.data }));
+        }
+      } catch (err) {
+        console.error("Failed to load room data:", err);
+      }
+    };
+
+    loadRoomData();
+
+    // Clear unread count for active room
+    setUnreadCountsMap((prev) => ({ ...prev, [activeRoomId]: 0 }));
+  }, [activeRoomId]);
+
+  // Socket event listeners
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleReceiveMessage = (msg) => {
+      if (!msg || !msg.roomId) return;
+
+      // Prevent duplicate messages
+      setMessagesMap((prev) => {
+        const existing = prev[msg.roomId] || [];
+        if (existing.some((m) => m._id === msg._id)) return prev;
+        return { ...prev, [msg.roomId]: [...existing, msg] };
       });
 
-      const data = await res.json();
-      if (!res.ok) return alert(data.message);
+      // Increment unread count if not active room
+      if (msg.roomId !== activeRoomId) {
+        setUnreadCountsMap((prev) => ({
+          ...prev,
+          [msg.roomId]: (prev[msg.roomId] || 0) + 1,
+        }));
+      }
+    };
+
+    const handleUserJoined = ({ message }) => {
+      if (message) setToast({ message, type: "info" });
+    };
+
+    const handleUserLeft = ({ message }) => {
+      if (message) setToast({ message, type: "info" });
+    };
+
+    const handleUserTyping = ({ roomId, user: typingUser }) => {
+      if (!typingUser || !typingUser.name) return;
+      setTypingUsersMap((prev) => {
+        const current = prev[roomId] || [];
+        if (!current.includes(typingUser.name)) {
+          return { ...prev, [roomId]: [...current, typingUser.name] };
+        }
+        return prev;
+      });
+    };
+
+    const handleUserStopTyping = ({ roomId, user: typingUser }) => {
+      if (!typingUser || !typingUser.name) return;
+      setTypingUsersMap((prev) => {
+        const current = prev[roomId] || [];
+        return { ...prev, [roomId]: current.filter((n) => n !== typingUser.name) };
+      });
+    };
+
+    socket.on("receiveMessage", handleReceiveMessage);
+    socket.on("userJoined", handleUserJoined);
+    socket.on("userLeft", handleUserLeft);
+    socket.on("userTyping", handleUserTyping);
+    socket.on("userStopTyping", handleUserStopTyping);
+
+    return () => {
+      socket.off("receiveMessage", handleReceiveMessage);
+      socket.off("userJoined", handleUserJoined);
+      socket.off("userLeft", handleUserLeft);
+      socket.off("userTyping", handleUserTyping);
+      socket.off("userStopTyping", handleUserStopTyping);
+    };
+  }, [socket, activeRoomId]);
+
+  // Join Room Handler
+  const handleJoinRoom = async (room) => {
+    let password;
+    if (room.type === "private") {
+      password = prompt("Enter room password:");
+      if (!password) return;
     }
 
-    socket.emit("joinRoom", room._id);
+    try {
+      const { data } = await api.post("/rooms/join", {
+        roomId: room._id,
+        password,
+      });
 
-    if (!joinedRooms.some((r) => r._id === room._id)) {
-      setJoinedRooms((prev) => [...prev, room]);
+      if (socket) {
+        socket.emit("joinRoom", { roomId: room._id });
+      }
+
+      const joinedRoom = data.room || room;
+      if (!joinedRooms.some((r) => r._id === joinedRoom._id)) {
+        setJoinedRooms((prev) => [...prev, joinedRoom]);
+      }
+      setActiveRoomId(joinedRoom._id);
+    } catch (err) {
+      console.error(err);
+      alert(err.response?.data?.message || "Failed to join room");
     }
-
-    setActiveRoom(room._id);
   };
 
-  // ================= LEAVE ROOM =================
-  const leaveRoom = (roomId) => {
-    socket.emit("leaveRoom", roomId);
+  // Leave Room Handler
+  const handleLeaveRoom = async (roomId) => {
+    try {
+      await api.post("/rooms/leave", { roomId });
 
-    setJoinedRooms((prev) =>
-      prev.filter((room) => room._id !== roomId)
-    );
+      if (socket) {
+        socket.emit("leaveRoom", { roomId });
+      }
 
-    if (activeRoom === roomId) {
-      setActiveRoom(null);
+      setJoinedRooms((prev) => prev.filter((r) => r._id !== roomId));
+      if (activeRoomId === roomId) {
+        const remaining = joinedRooms.filter((r) => r._id !== roomId);
+        setActiveRoomId(remaining.length > 0 ? remaining[0]._id : null);
+      }
+    } catch (err) {
+      const message = err.response?.data?.message || "Failed to leave room";
+      setToast({ message, type: "error" });
     }
   };
 
-  // ================= FILTER LOGIC =================
-  const filteredRooms = rooms.filter((r) =>
-    r.name.toLowerCase().includes(search.toLowerCase())
-  );
+  // Send Message Handler
+  const handleSendMessage = (msgData) => {
+    if (!activeRoomId || !socket) return;
 
-  const availableRooms = filteredRooms.filter(
-    (r) => !joinedRooms.some((jr) => jr._id === r._id)
-  );
+    socket.emit("sendMessage", {
+      roomId: activeRoomId,
+      message: msgData.content || "",
+      messageType: msgData.messageType || "text",
+      fileUrl: msgData.fileUrl || "",
+      fileName: msgData.fileName || "",
+      fileSize: msgData.fileSize || 0,
+    });
+  };
+
+  const handleTyping = () => {
+    if (socket && activeRoomId) {
+      socket.emit("typing", { roomId: activeRoomId });
+    }
+  };
+
+  const handleStopTyping = () => {
+    if (socket && activeRoomId) {
+      socket.emit("stopTyping", { roomId: activeRoomId });
+    }
+  };
+
+  const activeRoom = joinedRooms.find((r) => r._id === activeRoomId) || rooms.find((r) => r._id === activeRoomId);
 
   return (
-    <div className="flex h-screen p-6 gap-6">
+    <div className="flex h-screen w-screen overflow-hidden bg-slate-950 text-slate-100">
+      {/* Left Sidebar */}
+      <Sidebar
+        rooms={rooms}
+        joinedRooms={joinedRooms}
+        activeRoom={activeRoomId}
+        onSelectRoom={(id) => setActiveRoomId(id)}
+        onJoinRoom={handleJoinRoom}
+        onLeaveRoom={handleLeaveRoom}
+        onOpenCreateModal={() => setIsCreateModalOpen(true)}
+        onOpenProfile={() => setSelectedUserForProfile(user)}
+        unreadCounts={unreadCountsMap}
+      />
 
-      {/* LEFT PANEL */}
-      <div className="w-1/3 border-r pr-6 space-y-6">
+      {/* Center Chat Area */}
+      <ChatArea
+        room={activeRoom}
+        messages={messagesMap[activeRoomId] || []}
+        onSendMessage={handleSendMessage}
+        onTyping={handleTyping}
+        onStopTyping={handleStopTyping}
+        typingUsers={typingUsersMap[activeRoomId] || []}
+        onSelectUser={(u) => setSelectedUserForProfile(u)}
+      />
 
-        <h1 className="text-2xl font-bold">Rooms</h1>
-
-        {/* SEARCH */}
-        <input
-          className="border p-2 w-full rounded"
-          placeholder="Search rooms..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+      {/* Right Members Sidebar */}
+      {activeRoom && (
+        <MembersSidebar
+          room={activeRoom}
+          members={roomMembersMap[activeRoomId] || []}
+          onlineUsers={onlineUsers}
+          onOpenSettings={() => setIsSettingsModalOpen(true)}
+          onSelectUser={(u) => setSelectedUserForProfile(u)}
         />
+      )}
 
-        {/* CREATE ROOM */}
-        <div className="space-y-2">
+      {/* Modals */}
+      <CreateRoomModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onRoomCreated={(newRoom) => {
+          setRooms((prev) => [newRoom, ...prev]);
+          setJoinedRooms((prev) => {
+            if (prev.some((r) => r._id === newRoom._id)) return prev;
+            return [newRoom, ...prev];
+          });
+          setActiveRoomId(newRoom._id);
+          if (socket) {
+            socket.emit("joinRoom", { roomId: newRoom._id });
+          }
+        }}
+      />
 
-          <h1 className="text-2xl font-bold">Create Rooms</h1>
-          <input
-            className="border p-2 w-full rounded"
-            placeholder="Room name"
-            value={roomName}
-            onChange={(e) => setRoomName(e.target.value)}
-          />
+      <RoomSettingsModal
+        room={activeRoom}
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        onRoomUpdated={(updatedRoom) => {
+          setRooms((prev) => prev.map((r) => (r._id === updatedRoom._id ? updatedRoom : r)));
+          setJoinedRooms((prev) => prev.map((r) => (r._id === updatedRoom._id ? updatedRoom : r)));
+        }}
+        onRoomDeleted={(deletedRoomId) => {
+          setRooms((prev) => prev.filter((r) => r._id !== deletedRoomId));
+          setJoinedRooms((prev) => prev.filter((r) => r._id !== deletedRoomId));
+          setActiveRoomId(null);
+        }}
+      />
 
-          <select
-            className="border p-2 w-full rounded"
-            value={roomType}
-            onChange={(e) => setRoomType(e.target.value)}
-          >
-            <option value="public">Public</option>
-            <option value="private">Private</option>
-          </select>
+      <UserProfileModal
+        user={selectedUserForProfile}
+        onClose={() => setSelectedUserForProfile(null)}
+      />
 
-          {roomType === "private" && (
-            <input
-              className="border p-2 w-full rounded"
-              type="password"
-              placeholder="Room password"
-              value={roomPassword}
-              onChange={(e) => setRoomPassword(e.target.value)}
-            />
-          )}
-
-          <button
-            onClick={createRoom}
-            className="bg-blue-600 text-white w-full py-2 rounded hover:bg-blue-700"
-          >
-            Create Room
-          </button>
-        </div>
-
-        {/* MY ROOMS */}
-        <div>
-          <h2 className="font-semibold mb-2">My Rooms</h2>
-
-          {joinedRooms.length === 0 && (
-            <p className="text-sm text-gray-500">No joined rooms</p>
-          )}
-
-          {joinedRooms.map((room) => (
-            <div
-              key={room._id}
-              className={`p-3 border rounded mb-2 flex justify-between items-center cursor-pointer ${activeRoom === room._id ? "bg-blue-100" : ""
-                }`}
-            >
-              <div onClick={() => setActiveRoom(room._id)}>
-                <div className="font-medium">{room.name}</div>
-                <div className="text-xs text-gray-500">
-                  {room.type === "public" ? "🔓 Public" : "🔒 Private"}
-                </div>
-              </div>
-
-              <button
-                onClick={() => leaveRoom(room._id)}
-                className="bg-red-500 text-white px-2 py-1 rounded text-sm"
-              >
-                Leave
-              </button>
-            </div>
-          ))}
-        </div>
-
-        {/* AVAILABLE ROOMS (Public + Private) */}
-        <div>
-          <h2 className="font-semibold mb-2">Available Rooms</h2>
-
-          {availableRooms.length === 0 && (
-            <p className="text-sm text-gray-500">No rooms available</p>
-          )}
-
-          {availableRooms.map((room) => (
-            <div
-              key={room._id}
-              className="p-3 border rounded mb-2 flex justify-between items-center"
-            >
-              <div>
-                <div className="font-medium">{room.name}</div>
-                <div className="text-xs text-gray-500">
-                  {room.type === "public" ? "Public" : "Private"}
-                </div>
-              </div>
-
-              <button
-                onClick={() => joinRoom(room)}
-                className="bg-green-600 text-white px-3 py-1 rounded"
-              >
-                Join
-              </button>
-            </div>
-          ))}
-        </div>
-
-      </div>
-
-      {/* RIGHT PANEL */}
-      <div className="flex-1">
-        {activeRoom ? (
-          <h2 className="text-xl font-semibold">
-            Active Room:{" "}
-            {joinedRooms.find((r) => r._id === activeRoom)?.name}
-          </h2>
-        ) : (
-          <h2 className="text-gray-500">Select a room</h2>
-        )}
-      </div>
-
+      {/* Toast Overlay */}
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        onClose={() => setToast({ message: "", type: "info" })}
+      />
     </div>
   );
 }
-
-export default Dashboard;

@@ -1,71 +1,124 @@
 import { useState } from "react";
+import { useLocation, useNavigate, Link } from "react-router-dom";
+import api from "../api/axios";
 
 function Verify() {
   const [code, setCode] = useState("");
-  const email = localStorage.getItem("verifyEmail");
+  const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [error, setError] = useState("");
+  const [info, setInfo] = useState("");
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const email = location.state?.email || localStorage.getItem("verifyEmail");
 
   const handleVerify = async (e) => {
     e.preventDefault();
+    if (!code.trim()) return;
+    setLoading(true);
+    setError("");
+    setInfo("");
 
-    const res = await fetch("http://localhost:5000/api/auth/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, code }),
-    });
+    try {
+      const { data } = await api.post("/auth/verify", {
+        email,
+        code: code.trim(),
+      });
 
-    const data = await res.json();
-
-    if (res.ok) {
-      alert("Email verified successfully!");
+      setInfo(data.message || "Email verified successfully!");
       localStorage.removeItem("verifyEmail");
-      window.location.href = "/";
-    } else {
-      alert(data.message);
+      setTimeout(() => navigate("/"), 1500);
+    } catch (err) {
+      setError(err.response?.data?.message || "Verification failed");
+    } finally {
+      setLoading(false);
     }
   };
+
   const handleResend = async () => {
     if (!email) {
-      alert("Enter your email first.");
+      setError("Email is missing. Please register again.");
       return;
     }
 
-    const res = await fetch("http://localhost:5000/api/auth/resend-verification", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
-    });
+    setResending(true);
+    setError("");
+    setInfo("");
 
-    const data = await res.json();
-
-    if (res.ok) {
-      alert("New verification code sent!");
-    } else {
-      alert(data.message);
+    try {
+      const { data } = await api.post("/auth/resend-verification", { email });
+      setInfo(data.message || "New verification code sent to your email.");
+    } catch (err) {
+      setError(err.response?.data?.message || "Failed to resend code");
+    } finally {
+      setResending(false);
     }
   };
 
   return (
-    <div className="flex justify-center items-center h-screen">
-      <form onSubmit={handleVerify} className="space-y-4 w-80">
-        <h2 className="text-xl font-bold">Verify Email</h2>
+    <div className="flex items-center justify-center min-h-screen bg-slate-950 text-slate-100 p-4">
+      <form
+        onSubmit={handleVerify}
+        className="w-full max-w-sm bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl glass-panel space-y-5"
+      >
+        <div className="text-center space-y-1">
+          <h2 className="text-2xl font-bold text-white tracking-tight">Verify Email</h2>
+          <p className="text-xs text-slate-400">
+            Enter the 6-digit code sent to <span className="text-indigo-300 font-semibold">{email || "your email"}</span>
+          </p>
+        </div>
 
-        <input
-          type="text"
-          placeholder="Enter 6-digit code"
-          className="border p-2 w-full"
-          onChange={(e) => setCode(e.target.value)}
-        />
+        {error && (
+          <div className="bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium px-3 py-2 rounded-lg">
+            {error}
+          </div>
+        )}
 
-        <button className="bg-green-600 text-white p-2 w-full">
-          Verify
+        {info && (
+          <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-medium px-3 py-2 rounded-lg">
+            {info}
+          </div>
+        )}
+
+        <div>
+          <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
+            Verification Code
+          </label>
+          <input
+            type="text"
+            placeholder="123456"
+            required
+            maxLength={6}
+            pattern="[0-9]{6}"
+            className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-center text-lg font-mono tracking-widest text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500 transition-colors"
+            value={code}
+            onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-all shadow-lg shadow-emerald-600/25"
+        >
+          {loading ? "Verifying..." : "Verify Email"}
         </button>
+
         <button
           type="button"
           onClick={handleResend}
-          className="w-full mt-3 bg-gray-600 text-white p-2 rounded hover:bg-gray-700"
+          disabled={resending}
+          className="w-full bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 text-xs font-medium py-2 rounded-xl border border-slate-700 transition-colors"
         >
-          Resend Code
+          {resending ? "Resending..." : "Resend Verification Code"}
         </button>
+
+        <p className="text-xs text-center text-slate-400 pt-2">
+          <Link to="/" className="text-indigo-400 font-semibold hover:underline">
+            Back to Login
+          </Link>
+        </p>
       </form>
     </div>
   );

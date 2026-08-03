@@ -1,84 +1,110 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import api from "../api/axios";
 
 export default function Login() {
-    const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-    const navigate = useNavigate(); // ✅ ADD THIS
+  const navigate = useNavigate();
+  const { login } = useAuth();
 
-    const handleLogin = async (e) => {
-        e.preventDefault();
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
 
-        const res = await fetch("http://localhost:5000/api/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password }),
-        });
+    try {
+      const { data } = await api.post("/auth/login", { email, password });
 
-        const data = await res.json();
+      if (data?.token && data?.user) {
+        login(data);
+        navigate("/dashboard");
+      } else {
+        setError("Invalid login response");
+      }
+    } catch (err) {
+      const message = err.response?.data?.message;
+      if (message === "Verify your email first") {
+        navigate("/verify", { state: { email } });
+      } else {
+        setError(message || "Login failed");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        if (res.ok) {
-            localStorage.setItem("token", data.token);
-            navigate("/dashboard");
-        } else {
-            if (data.message === "Verify your email first") {
-                navigate("/verify", { state: { email } });
-            } else {
-                alert(data.message);
-            }
-        }
-    };
-
-    return (
-        <div className="flex items-center justify-center h-screen bg-gray-100">
-            <form
-                onSubmit={handleLogin}
-                className="bg-white p-8 rounded shadow-md w-80"
-            >
-                <h2 className="text-2xl mb-6 text-center font-bold">Login</h2>
-
-                <input
-                    type="email"
-                    placeholder="Email"
-                    className="w-full mb-4 p-2 border rounded"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                />
-
-                <input
-                    type="password"
-                    placeholder="Password"
-                    className="w-full mb-4 p-2 border rounded"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                />
-
-                <button
-                    type="submit"
-                    className="w-full bg-blue-600 text-white p-2 rounded hover:bg-blue-700"
-                >
-                    Login
-                </button>
-
-                <p className="text-sm text-center mt-3">
-                    <a href="/forgot-password" className="text-blue-600">
-                        Forgot Password?
-                    </a>
-                </p>
-
-                <p style={{ marginTop: "10px", fontSize: "14px" }}>
-                    Don't have an account?{" "}
-                    <span
-                        onClick={() => window.location.href = "/register"}
-                        style={{ color: "blue", cursor: "pointer" }}
-                    >
-                        Register
-                    </span>
-                </p>
-            </form>
+  return (
+    <div className="flex items-center justify-center min-h-screen bg-slate-950 text-slate-100 p-4">
+      <form
+        onSubmit={handleLogin}
+        className="w-full max-w-sm bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl glass-panel space-y-5"
+      >
+        <div className="text-center space-y-1">
+          <h2 className="text-2xl font-bold text-white tracking-tight">SyncSpace</h2>
+          <p className="text-xs text-slate-400">Sign in to your account</p>
         </div>
-    );
+
+        {error && (
+          <div className="bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-medium px-3 py-2 rounded-lg">
+            {error}
+          </div>
+        )}
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
+              Email
+            </label>
+            <input
+              type="email"
+              placeholder="name@company.com"
+              className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
+              Password
+            </label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              className="w-full px-4 py-2.5 bg-slate-800 border border-slate-700 rounded-xl text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </div>
+        </div>
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold py-2.5 rounded-xl transition-all shadow-lg shadow-indigo-600/25"
+        >
+          {loading ? "Signing in..." : "Login"}
+        </button>
+
+        <div className="flex items-center justify-between text-xs pt-2 text-slate-400">
+          <Link to="/forgot-password" className="hover:text-indigo-400 transition-colors">
+            Forgot Password?
+          </Link>
+          <span>
+            No account?{" "}
+            <Link to="/register" className="text-indigo-400 font-semibold hover:underline">
+              Register
+            </Link>
+          </span>
+        </div>
+      </form>
+    </div>
+  );
 }
